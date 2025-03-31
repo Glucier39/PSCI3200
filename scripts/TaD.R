@@ -55,7 +55,7 @@ dim(obama_dfm)
 
 # Too many columns! Lets see if removing stopwords can help
 
-obama_dfm_2 <- dfm(obama_tokens, remove = stopwords("english"),
+obama_dfm_2 <- dfm(obama_tokens,  = stopwords("english"),
                    remove_punct = T)
 dim(obama_dfm_2) # not bad
 head(obama_dfm_2)
