@@ -7,31 +7,44 @@ Preamble
 library(haven)
 library(tidyverse)
 library(readr)
+library(tradestatistics)
+library(scales)
+library(stringr)
+library(httr)
+library(jsonlite)
+library(dplyr)
+book <- read.csv("https://raw.githubusercontent.com/Glucier39/PSCI3200/refs/heads/main/data/how_china_lends_dataset_version_1_0__test/CLA-Database-Raw-Data-Public-2024-FIN.csv")
 
-
-book <- read.csv("https://raw.githubusercontent.com/Glucier39/PSCI3200/refs/heads/main/data/how_china_lends_dataset_version_1_0__test/CLA-Database-Raw-Data-Public-2024-FIN.csv?token=GHSAT0AAAAAADAAVNNK7QVA2XWBYTLIQCZMZ7NJKAA") # China Loan Data
 
  # V_Dem_CY_Full_Others_v14 <- read_csv("Documents/PSCI3200/data/how_china_lends_dataset_version_1_0__test/V-Dem-CY-FullOthers-v14_csv_YyKfizl/V-Dem-CY-Full+Others-v14.csv")
  # 
-Vdem <- read_csv("https://raw.githubusercontent.com/Glucier39/PSCI3200/refs/heads/main/data/V_Demclean.csv?token=GHSAT0AAAAAADAAVNNKSTQN4BWMUVM3PQUCZ7NJKYA")
+Vdem <- read_csv("https://raw.githubusercontent.com/Glucier39/PSCI3200/refs/heads/main/data/V_Demclean.csv")
 
 ```
+Comtrade data
 
-
-Cleaning Vdem to shrink file size - ignore 
 ```{r}
-# 
-# vdem_clean <- vdem_raw %>% dplyr::select(country_name, country_text_id, year, v2x_corr, v2x_execorr, v2x_pubcorr)
-# 
-# write_csv(vdem_clean, file = "~/Documents/PSCI3200/data/V_Demclean.csv")
+africa_iso3 <- c("DZA", "AGO", "CMR", "TCD", "COG", "COD", "EGY", "GNQ", "GAB", 
+                 "GHA", "MRT", "NGA", "SSD", "SDN", "TUN", "UGA")
 
+africa_trade <- purrr::map_dfr(africa_iso3, function(partner_code) {
+  ct_get_data(
+    reporter = "USA",
+    partner = partner_code,
+    commodity_code = "TOTAL",
+    start_date = 2018,
+    end_date = 2023,
+    flow_direction = "import"
+  )
+})
 ```
+
 
 Cleaning Loan Data
 ```{r}
  
 loans <- book %>% 
-   filter(Country %in% c("Algeria", "Angola", "Cameroon", "Chad", "Congo", 
+     filter(Country %in% c("Algeria", "Angola", "Cameroon", "Chad", "Congo", 
                             "Congo", "Egypt", "Equatorial Guinea", "Congo, Democratic Republic of the", "Congo, Republic of the",
                             "Gabon", "Ghana", "Mauritania", "Nigeria",
                             "South Sudan", "Sudan", "Tunisia", "Uganda")) %>% # filter for Africa  
@@ -52,35 +65,156 @@ oil_vdem <- Vdem %>%
     country_name ==  "Republic of the Congo" ~ "RC",
     .default = country_name
   )) %>% # oil countries  
-filter()
-setdiff(oil_vdem$country_name, loans$Country) # check to see if there's still any differences between the country names
+filter() %>%
+  mutate(year = as.numeric(year)) %>%
+    filter(year >= 1990)
 
 
 
-
-comb <- left_join(loans, oil_vdem, by =join_by(Country == country_name)) # check later 
+setdiff(oil_vdem$country_name, loans$Country)# check to see if there's still any differences between the country 
   
 
 
 
+comb <- left_join(loans, oil_vdem, by =join_by(Country == country_name)) # check later 
+
+
 comb <- comb %>%
-  group_by(Country, Year) %>%
-  mutate(year_count = n()) %>%
-  arrange(Country, Year)
+  distinct(BU.ID, .keep_all = TRUE) %>%
+  group_by(Year, Country) %>%
+  mutate(year_count = n())
+
+comb$execorr_stag <- sapply(comb$Year, function(y) {
+  match_row <- oil_vdem[oil_vdem$year == y + 1, ] # arb lag 
+  if (nrow(match_row) > 0) {
+    return(match_row$v2x_execorr[1])
+  } else {
+    return(NA)
+  }
+})
+
+comb$execorr_stag_scale <- scale(comb$execorr_stag) 
+
+```
+
+```{r}
+
+wb <- read_csv("https://raw.githubusercontent.com/Glucier39/PSCI3200/refs/heads/main/data/P_Data_Extract_From_Sustainable_Development_Goals_(SDGs)/892da769-1b4c-4360-a80a-7ca404a4ada8_Series%20-%20Metadata.csv")
+
+colnames(wb)
+unique(wb$`Series Name`)
+
+wb_clean <- wb %>%
+  mutate(across(matches("^[0-9]{4}"), as.character))
+
+wb_long <- wb_clean %>%
+  pivot_longer(
+    cols = matches("^[0-9]{4}"),
+    names_to = "Year",
+    values_to = "Value"
+  )
+
+wb_filtered <- wb_long %>%
+  filter(`Series Name` %in% c(
+    "GDP per capita (constant 2015 US$)",
+    "Exports of goods and services (% of GDP)",
+    "GDP per capita (current US$)"
+  ))
+
+# Step 3: Pivot wider so each indicator becomes a column
+wb_final <- wb_filtered %>%
+  select(`Country Name`, Year, `Series Name`, Value) %>%
+  pivot_wider(
+    names_from = `Series Name`,
+    values_from = Value
+  ) %>%
+ mutate(Year = str_extract(Year, "^[0-9]{4}"), 
+        Year = as.numeric(Year)) 
 
 
-   
-comb$execorr_stag <- NA
-comb$execorr_stag <- oil_vdem$v2x_execorr[oil_vdem$Year == comb$Year + 2]
-        
+comb <- left_join(wb_final, comb, by = c("Country Name" = "Country", "Year" = "Year"))
+comb <- na.omit(comb) %>%
+  mutate(log_gdp = log(as.numeric(`GDP per capita (current US$)`)), 
+         export_pec =  as.numeric(`Exports of goods and services (% of GDP)`)
+         )
+
+
+colnames(comb)
+```
+China trade dependency
+```{r}
+?tradestatistics
+
+africa_iso3 <- c("dza", "ago", "cmr", "tcd", "cog", "cod", "egy", "gnq", 
+                 "gab", "gha", "mrt", "nga", "ssd", "sdn", "tun", "uga")
+
+china_trade_africa <- purrr::map_dfr(
+  africa_iso3,
+  ~ ots_create_tidy_data(
+    years = 2000:2021,   # use only available years
+    reporters = .x,
+    partners = "chn",
+    table = "yrp"
+  )
+)
+
+china_trade_africa <- china_trade_africa %>%
+  mutate(country_name = recode(reporter_iso,
+    "dza" = "Algeria",
+    "ago" = "Angola",
+    "cmr" = "Cameroon",
+    "tcd" = "Chad",
+    "cog" = "Republic of the Congo",
+    "cod" = "Democratic Republic of the Congo",
+    "egy" = "Egypt",
+    "gnq" = "Equatorial Guinea",
+    "gab" = "Gabon",
+    "gha" = "Ghana",
+    "mrt" = "Mauritania",
+    "nga" = "Nigeria",
+    "ssd" = "South Sudan",
+    "sdn" = "Sudan",
+    "tun" = "Tunisia",
+    "uga" = "Uganda"
+  )) %>% 
+  mutate(trade_value_usd_exp = ifelse(is.na(trade_value_usd_exp), 0, trade_value_usd_exp)) %>%
+  rename(Country = country_name) %>% 
+  select(Country, trade_value_usd_exp, year)
+
+
+comb <- left_join(china_trade_africa, comb, by = c("Country" = "Country Name", "year" = "Year")) 
+
+
+comb <- na.omit(comb) %>%
+  select(-year.y) %>% 
+  mutate(log_exp = log(trade_value_usd_exp)) 
+
+comb$log_exp <- ifelse(comb$log_exp == "-Inf", 0, comb$log_exp)
+
+
 ```
 
 
-OLS
+
+OLS Scales 
+```{r} 
+
+linear <- lm(execorr_stag ~ year_count + log_gdp + export_pec, data = comb)
+
+summary(linear)
+
+```
+
 ```{r}
-linear <- summary(lm(v2x_execorr ~ year_count,data = comb)) # executive corruption indicator = strong correlation
-linear
-
-
+ggplot(oil_vdem, aes(x = year, y = v2x_corr, color = country_name)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "lm", se = TRUE, color = "steelblue") +
+  labs(
+    title = "Executive Corruption Over Time",
+    x = "Year",
+    y = "Executive Corruption (v2x_execorr, lagged 2 years)"
+  ) +
+  theme_minimal() +
+  facet_wrap("country_name")
 ```
 
