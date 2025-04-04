@@ -51,20 +51,27 @@ oil_vdem <- Vdem %>%
     country_name == "Democratic Republic of the Congo" ~ "DRC",
     country_name ==  "Republic of the Congo" ~ "RC",
     .default = country_name
-  ))
-
+  )) %>% # oil countries  
+filter()
 setdiff(oil_vdem$country_name, loans$Country) # check to see if there's still any differences between the country names
 
-comb <- left_join(loans, oil_vdem, by =join_by(Country == country_name, Year == year)) # check later 
+
+
+
+comb <- left_join(loans, oil_vdem, by =join_by(Country == country_name)) # check later 
   
+
+
 
 comb <- comb %>%
   group_by(Country, Year) %>%
-  mutate(year_count = n())
-         
+  mutate(year_count = n()) %>%
+  arrange(Country, Year)
 
 
-
+   
+comb$execorr_stag <- NA
+comb$execorr_stag <- oil_vdem$v2x_execorr[oil_vdem$Year == comb$Year + 2]
         
 ```
 
