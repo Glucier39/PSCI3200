@@ -2,6 +2,7 @@
 title: "Expanded Research"
 format: html
 editor: visual
+self-contained: true
 bibliography: references.bib
 ---
 
