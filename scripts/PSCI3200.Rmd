@@ -35,9 +35,8 @@ Comtrade data
 
 
 
-=======
->>>>>>> 8f0c65cbfc4bc26d1b15156104a378a28c5d2560
->>>>>>> cafc024e2eea7ce9a1e82fae9e192396bd8e61ef
+
+
 Cleaning Loan Data
 ```{r}
  
