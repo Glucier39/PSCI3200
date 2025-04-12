@@ -7,7 +7,7 @@ self-contained: true
 
 ## **Read-in data and prepare for analysis**
 
-```{r}
+```{r,message=FALSE, warning=FALSE}
 library(ggplot2)
 library(readr)
 library(ggdag)
