@@ -33,10 +33,6 @@ Vdem <- read_csv("https://raw.githubusercontent.com/Glucier39/PSCI3200/refs/head
 Comtrade data
 
 
-
-
-
-
 Cleaning Loan Data
 ```{r}
  
@@ -138,7 +134,7 @@ comb$execorr_stag_scale <- scale(comb$execorr_stag)
 
 ```
 China trade dependency
-```{r}
+```{r, echo=FALSE, message=FALSE, warning=FALSE,}
 ?tradestatistics
 
 africa_iso3 <- c("dza", "ago", "cmr", "tcd", "cog", "cod", "egy", "gnq", 
@@ -205,42 +201,30 @@ comb <- comb %>%
 colnames(comb)
 ```
 
+All Data - may be subject to NA noise
 ```{r}
 
-model <- feols(execorr_stag ~ year_count + year_sum + gdp_log + expofgdp_log | Country, data = comb)
+comb$Country <- as.factor(comb$Country)
 
-
-model
-
+# Run the regression with Country fixed effects
+model_base <- lm(execorr_stag ~ year_sum + gdp_log + expofgdp_log + Country, data = comb)
+summary(model_base)
 ```
-
-
-
-
-
-
-
-
 
 OLS Scales 
 ```{r} 
 
-linear <- lm(execorr_stag ~ year_count + log_gdp + export_pec, data = comb)
 
-summary(linear)
-
-summary(feols(execorr_stag ~ year_count + log_gdp + export_pec | Country + year, data = comb_post2009))
+comb$Year <- as.numeric(comb$Year)
 
 
-comb_post2009 <- comb %>% filter(year > 2009)
+comb2009 <- comb %>%
+  filter(Year > 2009) # incorporate everything post-2009 when changes start to happen
 
-ggplot(comb_post2009, aes(x = year, y = execorr_stag_scale, color = Country)) + geom_line()
-
-feols(execorr_stag_scale ~ year_count + log_gdp + export_pec | Country, data = comb_post2009)
-
-colnames(comb)
+model2009 <- lm(execorr_stag ~ year_count + year_sum + gdp_log + expofgdp_log + Country, data = comb2009)
+summary(model2009)
 ```
-
+Corruption Over Time
 ```{r}
 ggplot(oil_vdem, aes(x = year, y = v2x_corr, color = country_name)) +
   geom_point(alpha = 0.5) +
@@ -255,39 +239,18 @@ ggplot(oil_vdem, aes(x = year, y = v2x_corr, color = country_name)) +
 ```
 
 ```{r}
-ggplot(comb_post2009, aes(x = year, y = execorr_stag_scale, color = Country)) +
-  geom_line(size = 1) +
+vdem_2009 <- oil_vdem %>% filter(year >= 2009)
+
+ggplot(vdem_2009, aes(x = year, y = v2x_corr, color = country_name)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "lm", se = TRUE, color = "steelblue") +
   labs(
-    title = "Trends in Executive Corruption Across Oil-Rich African Countries (2009–2020)",
-    subtitle = "V-Dem's executive corruption index (standardized) plotted over time by country",
+    title = "Executive Corruption Over Time",
     x = "Year",
-    y = "Standardized Executive Corruption Score",
-    color = "Country",
-    caption = "Note: Higher values indicate lower levels of executive corruption. Based on V-Dem's v2x_execorr index."
+    y = "Executive Corruption (v2x_execorr, lagged 2 years)"
   ) +
-  theme_minimal()
-
-summary_combined <- tibble(
-  Variable = c("execorr_stag_scale", "year_count"),
-  Min = c(min(comb_post2009$execorr_stag_scale, na.rm = TRUE),
-          min(comb_post2009$year_count, na.rm = TRUE)),
-  Q1 = c(quantile(comb_post2009$execorr_stag_scale, 0.25, na.rm = TRUE),
-         quantile(comb_post2009$year_count, 0.25, na.rm = TRUE)),
-  Median = c(median(comb_post2009$execorr_stag_scale, na.rm = TRUE),
-             median(comb_post2009$year_count, na.rm = TRUE)),
-  Q3 = c(quantile(comb_post2009$execorr_stag_scale, 0.75, na.rm = TRUE),
-         quantile(comb_post2009$year_count, 0.75, na.rm = TRUE)),
-  Max = c(max(comb_post2009$execorr_stag_scale, na.rm = TRUE),
-          max(comb_post2009$year_count, na.rm = TRUE))
-) %>%
-  mutate(across(where(is.numeric), round, 2))  # round all numeric columns to 2 decimal places
-
-# Render the gt table
-summary_combined %>%
-  gt() %>%
-  tab_header(
-    title = "Five-Number Summary of Key Variables",
-    subtitle = "Summary statistics for executive corruption and years since first Chinese loan"
-  )
+  theme_minimal() +
+  facet_wrap("country_name")
 ```
+
 
